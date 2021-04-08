@@ -39,7 +39,7 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
 
         Button pair_button = findViewById(R.id.connect);
         Button unpair_button = findViewById(R.id.disconnect);
-        Boolean result = pm.ensureConnectionToService(this);
+        boolean result = pm.ensureConnectionToService(this);
 
         pair_button.setOnClickListener(v -> {
             if(result) {
@@ -57,12 +57,9 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
             }
         });
 
-        unpair_button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                pm.disconnectScanner();
-                pm.disconnectDisplay();
-            }
+        unpair_button.setOnClickListener(v -> {
+            pm.disconnectScanner();
+            pm.disconnectDisplay();
         });
     }
 
@@ -70,12 +67,7 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
         AlertDialog.Builder dialog_builder =  new AlertDialog.Builder(this);
         dialog_builder.setTitle(title);
         dialog_builder.setMessage(message);
-        dialog_builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                finish();
-            }
-        });
+        dialog_builder.setPositiveButton("OK", (dialog, which) -> finish());
         dialog_builder.show();
     }
 
@@ -113,7 +105,7 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
         PgTemplateField[] data = {
                 new PgTemplateField(1, barcodeScanResults.getSymbology(), barcodeScanResults.getBarcodeContent())
         };
-        PgScreenData screenData = new PgScreenData("PG1", data, RefreshType.DEFAULT);
+        PgScreenData screenData = new PgScreenData("PG1", data, RefreshType.DEFAULT, 100);
         sendScreen(screenData);
         }
 
