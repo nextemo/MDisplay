@@ -3,4 +3,10 @@
     <string name="connect">connect</string>
     <string name="unpair">unpair</string>
     <string name="pair">pair</string>
+    <string name="title_activity_auftrag">Auftrag</string>
+    <!--
+    This string is used for square devices and overridden by hello_world in
+    values-round/strings.xml for round devices.
+    -->
+    <string name="hello_world">Hello Square World!</string>
 </resources>
