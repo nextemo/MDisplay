@@ -2,26 +2,37 @@ package com.demo.mdisplaytest;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.Toolbar;
 
 import android.app.AlertDialog;
+import android.content.DialogInterface;
+import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
+import android.os.Environment;
 import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.widget.Button;
-import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
 
 import org.jetbrains.annotations.NotNull;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NamedNodeMap;
+import org.w3c.dom.Node;
+import org.w3c.dom.NodeList;
 
+import java.io.File;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 
 import de.proglove.sdk.ConnectionStatus;
-import de.proglove.sdk.IServiceOutput;
 import de.proglove.sdk.PgError;
 import de.proglove.sdk.PgManager;
 import de.proglove.sdk.button.ButtonPress;
@@ -41,41 +52,58 @@ import de.proglove.sdk.scanner.PgImage;
 import de.proglove.sdk.scanner.PgImageConfig;
 import de.proglove.sdk.scanner.PgPredefinedFeedback;
 
-public class MainActivity extends AppCompatActivity implements IScannerOutput, IServiceOutput, IDisplayOutput, IButtonOutput {
+public class MainActivity extends AppCompatActivity implements IScannerOutput, IDisplayOutput, IButtonOutput {
+    public static final String MENGE = "menge";
+    public static final String PLTZ = "pltz";
+    public static final String ORT = "ort";
+    public static final String BEZ = "bez";
+    public static final String ARTIKEL_NR = "artikelNr";
+    public static final String AUFTRAG = "auftrag";
+    public static final String ARTIKEL_NUMMER = "Artikel Nummer";
+    public static final String BEZEICHNUNG = "Bezeichnung";
+    public static final String LAGERORT = "Lagerort";
+    public static final String LAGERPLATZ = "Lagerplatz";
+    public static final String ART_MENGE = "Menge";
+    public static final String FERTIG = "fertig";
+    public static final String ZWEIMAL_DRÜCKEN_ZU_BEGINNEN = "Zweimal drücken zu beginnen";
 
-    PgManager pm = new PgManager();
+    PgManager pm = new PgManager(); //Proglove Manager
     TextView txtArtikelNr, txtBezeichnung, txtOrt, txtMenge, txtPlatz, auftrag;
     ImageView imageView;
+    boolean orderIsNull = true;
+    PgScreenData screenData = null;
+    String displayedContent = "";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        setSupportActionBar(findViewById(R.id.toolbar));
+
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT); //set App Orientation to Portrait
 
         Button pair_button = findViewById(R.id.connect);
         Button unpair_button = findViewById(R.id.disconnect);
-        Button fertig_button = findViewById(R.id.fertigBtn);
         txtArtikelNr = findViewById(R.id.artNr);
         txtBezeichnung = findViewById(R.id.bez);
         txtOrt = findViewById(R.id.ort);
         txtMenge = findViewById(R.id.menge);
         txtPlatz = findViewById(R.id.pltz);
         auftrag = findViewById(R.id.result);
-        imageView = findViewById(R.id.image);
         boolean result = pm.ensureConnectionToService(this);
 
+
         pair_button.setOnClickListener(v -> {
-            if(result) {
-             try {
-                 pm.startPairing();
-                 pm.subscribeToScans(this);
-                 pm.subscribeToServiceEvents(this);
-                 pm.subscribeToDisplayEvents(this);
-                 pm.subscribeToButtonPresses(this);
-             }catch (Exception error){
-                 Log.d("Error Message: ", error.getMessage());
-                 Dialog("Error: ", error.getMessage());
-             }
+            if (result) {
+                try {
+                    pm.startPairing();
+                    pm.subscribeToScans(this);
+                    pm.subscribeToDisplayEvents(this);
+                    pm.subscribeToButtonPresses(this);
+                } catch (Exception error) {
+                    Log.d("Error Message: ", error.getMessage());
+                    Dialog("Error: ", error.getMessage());
+                }
             } else {
                 Dialog("Error: ", "Mark Display is not connected");
             }
@@ -85,48 +113,26 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
             pm.disconnectScanner();
             pm.disconnectDisplay();
         });
-
-        fertig_button.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                startTakingImage();
-                return false;
-            }
-        });
-
-        fertig_button.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                auftrag.setText("");
-                txtArtikelNr.setText("");
-                txtBezeichnung.setText("");
-                txtOrt.setText("");
-                txtPlatz.setText("");
-                txtMenge.setText("");
-                displayedContent = "";
-                startPicking();
-                imageView.setImageResource(0);
-                feedback(3);
-            }
-        });
     }
 
-    public void Dialog(String title, String message){
-        AlertDialog.Builder dialog_builder =  new AlertDialog.Builder(this);
+    public void Dialog(String title, String message) {
+        AlertDialog.Builder dialog_builder = new AlertDialog.Builder(this);
         dialog_builder.setTitle(title);
         dialog_builder.setMessage(message);
         dialog_builder.setPositiveButton("OK", (dialog, which) -> finish());
         dialog_builder.show();
     }
 
+
     @Override
     protected void onDestroy() {
         pm.unsubscribeFromScans(this);
         pm.unsubscribeFromDisplayEvents(this);
-        pm.unsubscribeFromServiceEvents(this);
+        pm.unsubscribeFromButtonPresses(this);
         super.onDestroy();
     }
 
+    //setting what to be displayed on Mark Display
     private void sendScreen(PgScreenData screenData) {
         if (pm.isConnectedToService() && pm.isConnectedToDisplay()) {
             pm.setScreen(screenData, new IPgSetScreenCallback() {
@@ -145,95 +151,100 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
         }
     }
 
-    Map<String, String> artikel  = new HashMap<String, String>() {{
-        put("artikelNr", "1824869");
-        put("bez", "Baby Phone");
-        put("ort", "LA007");
-        put("pltz", "T21");
-        put("menge", "5");
+    //Dummy Item to be picked up
+    HashMap<String, String> artikel = new HashMap<String, String>() {{
+        put(ORT, "LA007");
+        put(PLTZ, "T21");
+        put(ARTIKEL_NR, "1824869");
+        put(MENGE, "1");
     }};
 
-    PgScreenData screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, "Header", "Content")), RefreshType.PARTIAL_REFRESH);
-    String displayedContent = "";
+    HashMap<String, String> second_artikel = new HashMap<String, String>() {{
+        put(ORT, "LA007");
+        put(PLTZ, "T25");
+        put(ARTIKEL_NR, "4869182");
+        put(MENGE, "1");
+    }};
+
     @Override
     public void onBarcodeScanned(@NotNull BarcodeScanResults barcodeScanResults) {
         displayedContent = screenData.component2().iterator().next().getContent();
         String scannedBarcode = barcodeScanResults.getBarcodeContent();
-        PgTemplateField[] data = {
-                new PgTemplateField(1, "Artikel Nummer", artikel.get("artikelNr")),
-                new PgTemplateField(2, "Bezeichnung", artikel.get("bez"))
+
+        PgTemplateField[] artikel_data = {
+                new PgTemplateField(1, ARTIKEL_NUMMER, artikel.get(ARTIKEL_NR)),
+                new PgTemplateField(2, MENGE, artikel.get(MENGE))
         };
 
-        switch (scannedBarcode){
-            case "007":  screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, "Lagerort", artikel.get("ort"))), RefreshType.PARTIAL_REFRESH);
-                sendScreen(screenData);
-                auftrag.setText("Tom Delonge");
-                txtArtikelNr.setText(artikel.get("artikelNr"));
-                txtBezeichnung.setText(artikel.get("bez"));
-                txtOrt.setText(artikel.get("ort"));
-                txtPlatz.setText(artikel.get("pltz"));
-                txtMenge.setText(artikel.get("menge"));
-                break;
+        PgTemplateField[] first_order = {
+                new PgTemplateField(1, LAGERORT, artikel.get(ORT)),
+                new PgTemplateField(2, LAGERPLATZ, artikel.get(PLTZ)),
+                new PgTemplateField(3, ARTIKEL_NUMMER, artikel.get(ARTIKEL_NR))
+        };
 
-            case "LA007" : if(scannedBarcode.equals(displayedContent)){
-                screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, "Lagerplatz", artikel.get("pltz"))), RefreshType.PARTIAL_REFRESH);
+        //If Barcode scanned is "auftrag" and Order is Null
+        //Order details fill be filled in the App and at the same time "double click to start Picking" will be displayed on Mark Display
+        if (scannedBarcode.equals(AUFTRAG) && orderIsNull) {
+            orderIsNull = false;
+            screenData = new PgScreenData("PG1A", Collections.singleton(new PgTemplateField(1, "", ZWEIMAL_DRÜCKEN_ZU_BEGINNEN)), RefreshType.FULL_REFRESH);
+            sendScreen(screenData);
+            auftrag.setText("Auftrag: Mustermann");
+            txtOrt.setText(artikel.get(ORT));
+            txtPlatz.setText(artikel.get(PLTZ));
+            txtArtikelNr.setText(artikel.get(ARTIKEL_NR));
+            txtBezeichnung.setText(artikel.get(BEZ));
+            txtMenge.setText(artikel.get(MENGE));
+            return; //Return is needed in order to prevent the rest of the Code to be run
+        }
+
+        //If condition is met, Order details on the App will be reset
+        if (scannedBarcode.equals(FERTIG) && displayedContent.equals(artikel.get(MENGE))) {
+            reset();
+            return;
+        }
+
+        //If scanned Barcode equals to what's shown on Mark Display, Picking routine will be carried out (check ORT -> check PLATZ -> check Artikel Nummer)
+        if (scannedBarcode.equals(displayedContent)) {
+            if (scannedBarcode.equals(artikel.get(ORT))) {
+                //show the Lagerplatz to User
+                screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, LAGERPLATZ, artikel.get(PLTZ))), RefreshType.PARTIAL_REFRESH);
                 sendScreen(screenData);
                 feedback(1);
-            } else {
-                sendScreen(new PgScreenData("PG1E", Collections.singleton(new PgTemplateField(1, "Error", "Error")),RefreshType.PARTIAL_REFRESH));
-                screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, "Lagerplatz", artikel.get("pltz"))), RefreshType.PARTIAL_REFRESH);
-                sendScreen(screenData);
-                feedback(2);
             }
-                break;
-
-            case "T21" : if(scannedBarcode.equals(displayedContent)){
-                screenData = new PgScreenData("PG2", data, RefreshType.PARTIAL_REFRESH);
+            if (scannedBarcode.equals(artikel.get(PLTZ))) {
+                //show the Artikelnummer and Menge to User
+                screenData = new PgScreenData("PG2", artikel_data, RefreshType.PARTIAL_REFRESH);
                 sendScreen(screenData);
                 feedback(1);
-            } else {
-                sendScreen(new PgScreenData("PG1E", Collections.singleton(new PgTemplateField(1, "Error", "Error")),RefreshType.PARTIAL_REFRESH));
-                screenData = new PgScreenData("PG2", data, RefreshType.PARTIAL_REFRESH);
-                sendScreen(screenData);
-                feedback(2);
             }
-                break;
-
-            case "1824869": if(scannedBarcode.equals(displayedContent)){
-                screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, "Menge", artikel.get("menge"))), RefreshType.PARTIAL_REFRESH);
+            if (scannedBarcode.equals(artikel.get(ARTIKEL_NR))) {
+                //show the next Artikel
+                if(scannedBarcode.equals(second_artikel.get(ARTIKEL_NR))) reset();
+                else screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, LAGERPLATZ, artikel.get(PLTZ))), RefreshType.PARTIAL_REFRESH);
                 sendScreen(screenData);
                 feedback(1);
-            } else {
-                sendScreen(new PgScreenData("PG1E", Collections.singleton(new PgTemplateField(1, "Error", "Error")),RefreshType.PARTIAL_REFRESH));
-                screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, "Menge", artikel.get("menge"))), RefreshType.PARTIAL_REFRESH);
-                sendScreen(screenData);
-                feedback(2);
             }
-                break;
-
-            case "fertig":
-                auftrag.setText("");
-                txtArtikelNr.setText("");
-                txtBezeichnung.setText("");
-                txtOrt.setText("");
-                txtPlatz.setText("");
-                txtMenge.setText("");
-                displayedContent = "";
-                startPicking();
-                imageView.setImageResource(0);
-//                feedback(3);
-                break;
+        } else {
+            // throw error Beep
+            feedback(2);
         }
     }
 
-    @Override
-    public void onServiceConnected() {
-
-    }
-
-    @Override
-    public void onServiceDisconnected() {
-
+    public void reset() {
+        PgTemplateField[] complete = {
+                new PgTemplateField(1, "", "Auftrag ist fertig"),
+                new PgTemplateField(2, "", "Bitte neuen Auftrag scannen")
+        };
+        sendScreen(new PgScreenData("PG2C", complete, RefreshType.PARTIAL_REFRESH));
+        auftrag.setText("");
+        txtArtikelNr.setText("");
+        txtBezeichnung.setText("");
+        txtOrt.setText("");
+        txtPlatz.setText("");
+        txtMenge.setText("");
+        displayedContent = "";
+        orderIsNull = true;
+        feedback(0);
     }
 
     @Override
@@ -241,9 +252,8 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
         startPicking();
     }
 
-    public void startPicking(){
-        PgTemplateField pgTemplateField = new PgTemplateField(1, "", "Scan Auftrag zu beginnen");
-        PgScreenData screenData = new PgScreenData("PG1A", Collections.singleton(pgTemplateField), RefreshType.FULL_REFRESH);
+    public void startPicking() {
+        screenData = new PgScreenData("PG1A", Collections.singleton(new PgTemplateField(1, "", "Bitte Auftrag scannen")), RefreshType.PARTIAL_REFRESH);
         sendScreen(screenData);
     }
 
@@ -259,8 +269,7 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
 
     @Override
     public void onScannerConnected() {
-//        Intent toAuftrag = new Intent(getApplicationContext(), AuftragActivity.class);
-//        startActivity(toAuftrag);
+
     }
 
     @Override
@@ -296,36 +305,76 @@ public class MainActivity extends AppCompatActivity implements IScannerOutput, I
                 return PgPredefinedFeedback.SUCCESS;
             case 2:
                 return PgPredefinedFeedback.ERROR;
-            case 3:
-                return PgPredefinedFeedback.SPECIAL_1;
             default:
-                return PgPredefinedFeedback.ERROR;
+                return PgPredefinedFeedback.SPECIAL_1;
         }
     }
 
+
     private void startTakingImage() {
         int quality = 20;
-        int timeout = 10000;
+        int timeout = 50000;
         PgImageConfig imageConfig = new PgImageConfig(quality, ImageResolution.RESOLUTION_1280_960);
 
         pm.takeImage(imageConfig, timeout, new IPgImageCallback() {
             @Override
             public void onImageReceived(@NonNull final PgImage pgImage) {
-                final Bitmap bmp = BitmapFactory.decodeByteArray(pgImage.getBytes(), 0, pgImage.getBytes().length);
-                runOnUiThread(() -> imageView.setImageBitmap(bmp));
+                Bitmap bmp = BitmapFactory.decodeByteArray(pgImage.getBytes(), 0, pgImage.getBytes().length);
+                try {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this);
+                            LayoutInflater layoutInflater = LayoutInflater.from(MainActivity.this);
+                            View inflater = layoutInflater.inflate(R.layout.image, null);
+                            builder.setView(inflater);
+                            imageView = inflater.findViewById(R.id.imageTaken);
+                            imageView.setImageBitmap(bmp);
+                            builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    dialog.dismiss();
+                                    imageView.setImageResource(0);
+                                }
+                            });
+                            builder.setNegativeButton("Take another Picture", new DialogInterface.OnClickListener() {
+                                @Override
+                                public void onClick(DialogInterface dialog, int which) {
+                                    startTakingImage();
+                                    dialog.dismiss();
+                                    imageView.setImageResource(0);
+                                }
+                            });
+                            builder.setCancelable(false);
+                            AlertDialog imageDialog = builder.create();
+                            imageDialog.show();
+                            //todo tell User to check out the Image on the Device
+                        }
+                    });
+                } catch (Exception e) {
+                    Log.e("Error", e.getMessage());
+                }
             }
 
             @Override
             public void onError(@NonNull final PgError pgError) {
                 final String msg = "Taking an image failed. Error code is: " + pgError;
-//                showMessage(msg, true);
             }
         });
-
     }
 
     @Override
     public void onButtonPressed(@NotNull ButtonPress buttonPress) {
-        if(buttonPress.component1() == 1) startTakingImage();
+        if (buttonPress.component1() == 1) {
+            if (screenData.component2().iterator().next().getContent().equals(ZWEIMAL_DRÜCKEN_ZU_BEGINNEN) && !orderIsNull) {
+                screenData = new PgScreenData("PG1", Collections.singleton(new PgTemplateField(1, LAGERORT, artikel.get(ORT))), RefreshType.PARTIAL_REFRESH);
+                sendScreen(screenData);
+                feedback(1);
+            } else {
+                runOnUiThread(() -> {
+                    startTakingImage();
+                });
+            }
+        }
     }
 }
